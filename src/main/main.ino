@@ -1,19 +1,18 @@
 /*
  * Project: 15³ Emotional Black Box
- * Architecture: Arduino UNO Q (STM32 + Linux hybrid, but using standard Arduino core via IDE)
+ * Architecture: Arduino UNO Q (STM32U585 Cortex-M33, Zephyr RTOS platform)
  * Features: MPR121 (Touch), PCA9685 (Servos), DFPlayer Mini (Audio), FastLED (WS2812B), Atomizer, Fan, Vib Motor
  */
 
 #include <Wire.h>
-#include <SoftwareSerial.h>
 #include <Adafruit_MPR121.h>
 #include <Adafruit_PWMServoDriver.h>
 #include <FastLED.h>
 #include <DFRobotDFPlayerMini.h>
 
 // --- PIN DEFINITIONS ---
-#define RX_PIN 3        // DFPlayer RX (Arduino TX) -> Connected via Resistor
-#define TX_PIN 2        // DFPlayer TX (Arduino RX)
+// DFPlayer Mini uses hardware Serial1 (D0=RX, D1=TX on UNO Q)
+// Connect DFPlayer TX -> Arduino D0(RX1), DFPlayer RX -> 1K resistor -> Arduino D1(TX1)
 #define LED_PIN 4       // WS2812B DIN
 #define VIB_MOTOR_PIN 5 // Vibration motor (Require MOSFET/Transistor for safety)
 #define FAN_PIN 6       // 3cm Fan (Require MOSFET if 12V or high current)
@@ -45,7 +44,6 @@ unsigned long stateTimer = 0;
 unsigned long lastHeartbeatTime = 0;
 
 // --- INSTANCES ---
-SoftwareSerial mySoftwareSerial(TX_PIN, RX_PIN); 
 DFRobotDFPlayerMini myDFPlayer;
 Adafruit_MPR121 cap = Adafruit_MPR121();
 Adafruit_PWMServoDriver pwm = Adafruit_PWMServoDriver();
@@ -94,9 +92,9 @@ void setup() {
   setServoAngle(0, 0); // Left cover servo
   setServoAngle(1, 0); // Right cover servo
 
-  // 5. Initialize DFPlayer Mini
-  mySoftwareSerial.begin(9600);
-  if (!myDFPlayer.begin(mySoftwareSerial)) {
+  // 5. Initialize DFPlayer Mini (via hardware Serial1)
+  Serial1.begin(9600);
+  if (!myDFPlayer.begin(Serial1)) {
     Serial.println("DFPlayer error, check wiring or SD card.");
   } else {
     myDFPlayer.volume(20);  // Volume 0~30
@@ -118,23 +116,23 @@ void loop() {
       // Calculate diversity: Check if touched pads are different from last frame
       uint16_t changes = touched ^ lastTouchedPads;
       if (changes > 0) {
-        touchDiversityScore = min(touchDiversityScore + 2.0, 15.0); // Reward dynamic touch
+        touchDiversityScore = (touchDiversityScore + 2.0f < 15.0f) ? touchDiversityScore + 2.0f : 15.0f; // Reward dynamic touch
       } else {
-        touchDiversityScore = max(touchDiversityScore - 0.5, 0.0);  // Penalize static hold (fatigue)
+        touchDiversityScore = (touchDiversityScore - 0.5f > 0.0f) ? touchDiversityScore - 0.5f : 0.0f;  // Penalize static hold (fatigue)
       }
       
       // Calculate Excitement Increment
-      float increment = 0.05 + (touchDiversityScore * 0.05);
-      if (touchDiversityScore < 1.0) increment = 0.01; // Fatigue state: very slow growth
+      float increment = 0.05f + (touchDiversityScore * 0.05f);
+      if (touchDiversityScore < 1.0f) increment = 0.01f; // Fatigue state: very slow growth
       
-      excitement = min(excitement + increment, MAX_EXCITEMENT);
+      excitement = (excitement + increment < MAX_EXCITEMENT) ? excitement + increment : MAX_EXCITEMENT;
       lastTouchTime = currentMillis;
     } else {
       // Decay over time if not touched
       if (currentMillis - lastTouchTime > 3000) {
-        excitement = max(excitement - 0.1, 0.0); // Slow decay
+        excitement = (excitement - 0.1f > 0.0f) ? excitement - 0.1f : 0.0f; // Slow decay
       }
-      touchDiversityScore = max(touchDiversityScore - 0.1, 0.0);
+      touchDiversityScore = (touchDiversityScore - 0.1f > 0.0f) ? touchDiversityScore - 0.1f : 0.0f;
     }
     lastTouchedPads = touched;
   }
@@ -255,7 +253,7 @@ void executeStateOutputs(unsigned long timeMs) {
       setServoAngle(1, flutter);
       
       // 2. Light: Warm orange-red, breathing gets faster and brighter
-      float freq = max(400.0 - (excitement * 2.0), 100.0);
+      float freq = (400.0f - (excitement * 2.0f) > 100.0f) ? 400.0f - (excitement * 2.0f) : 100.0f;
       uint8_t breath = (sin(timeMs / freq) + 1.0) * (20.0 + excitement/2.0); 
       fill_solid(leds, NUM_LEDS, CRGB(breath + 20, breath / 4, 0));
       FastLED.show();
