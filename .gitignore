@@ -1,0 +1,26 @@
+# Build files
+build/
+*.hex
+*.elf
+*.bin
+*.o
+*.d
+
+# IDE settings
+.vscode/
+.idea/
+*.code-workspace
+
+# OS generated files
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# Arduino IDE temp
+*.ino.cpp
+/tmp/
+
+# Secrets / credentials
+*.pem
+*.key
+secrets.h
